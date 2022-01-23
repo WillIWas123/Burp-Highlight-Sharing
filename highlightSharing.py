@@ -1,13 +1,9 @@
 from burp import IBurpExtender, ITab
-from burp import IHttpListener
-from burp import IProxyListener
 from burp import IContextMenuFactory, IBurpExtenderCallbacks, IRequestInfo,IExtensionStateListener
-from javax.swing import JMenuItem,JPanel, JLabel, JComboBox, JTextField, SwingConstants, JButton
-from java.awt.event import ActionListener
-from java.io import PrintWriter
+from javax.swing import JPanel, JLabel, JTextField, SwingConstants, JButton
 from com.ziclix.python.sql import zxJDBC
 
-class BurpExtender(IBurpExtender,IContextMenuFactory,ActionListener,ITab, IRequestInfo, IBurpExtenderCallbacks, IExtensionStateListener):
+class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpExtenderCallbacks, IExtensionStateListener):
 
     def getTabCaption(self):
         return "Highlight-Sharing"
