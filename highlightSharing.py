@@ -1,46 +1,92 @@
 from burp import IBurpExtender, ITab
+import time
 from burp import IContextMenuFactory, IBurpExtenderCallbacks, IRequestInfo,IExtensionStateListener
 from javax.swing import JPanel, JLabel, JTextField, SwingConstants, JButton
 from com.ziclix.python.sql import zxJDBC
+from java.net.http import HttpClient;
+from java.net.http import WebSocket
+from java.net import URI;
+import java.lang.CharSequence
+import json
 
-class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpExtenderCallbacks, IExtensionStateListener):
+class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpExtenderCallbacks,IExtensionStateListener, WebSocket.Listener):
 
+    ##### WEBSOCKET PART ######
+
+    def onOpen(self, websocket):
+        self._websocket=websocket
+        data={"action":"UPDATE", "user":self._user, "project":self._projectName}
+        if not self.sendMessage(json.dumps(data)):
+            self._messageBox.text="Not connected: Failed to connect to the websocket server"
+        self._websocket.request(1)
+        self._messageBox.text="Connected :)"
+
+    def onClose(self, websocket, statusCode, reason):
+        self._messageBox.text="Not connected: connection closed :("
+
+    def onText(self, websocket, data, last):
+        self._websocket=websocket
+        content = json.loads(data.toString())
+        user = content["user"]
+        project = content["project"]
+        if user != self._user and project == self._projectName:
+            self.updateReq(content["path"], content["color"], content["comment"])
+        else:
+            self._callbacks.printOutput("NOT UPDATING")
+        self._websocket.request(1)
+
+    def sendMessage(self, text):
+        if self._websocket:
+            self._websocket.sendText(text, True)
+            self._websocket.request(1)
+            return True
+        return False # is probably not initialized, due to some async thingy......
+
+
+    def connectWebsocket(self, event):
+        self._messageBox.text = "Not connected"
+        self._wsString = self._wsStringButton.getText()
+        self._projectName = self._projectButton.getText()
+        self._user = self._userButton.getText()
+        if self._projectName =="" or self._user == "":
+            self._messageBox.text = "Not connected: Please specify a username and ws string"
+            return
+        client = HttpClient.newHttpClient()
+        client.newWebSocketBuilder().buildAsync(URI.create(self._wsString),  self);
+
+
+    ##### WEBSOCKET PART ######
+
+    ###### UI ######
     def getTabCaption(self):
         return "Highlight-Sharing"
 
     def getUiComponent(self):
         panel=JPanel()
 
-        self._dbStringButton = JTextField('', 40)
-        label = JLabel('DbString:', SwingConstants.RIGHT)
+        self._wsStringButton = JTextField('', 40)
+        label = JLabel('WS String:', SwingConstants.RIGHT)
         panel.add(label)
-        panel.add(self._dbStringButton)
+        panel.add(self._wsStringButton)
+
+        self._userButton = JTextField('', 10)
+        label = JLabel('Username',SwingConstants.RIGHT)
+        panel.add(label)
+        panel.add(self._userButton)
 
         self._projectButton = JTextField('', 15)
         panel.add(JLabel("Project name:", SwingConstants.RIGHT))
         panel.add(self._projectButton)
 
 
-        button=JButton("Connect", actionPerformed=self.connectDb)
+        button=JButton("Connect", actionPerformed=self.connectWebsocket)
         panel.add(button)
 
         self._messageBox = JLabel("")
         panel.add(self._messageBox)
         return panel
+    ###### UI ######
 
-
-    def connectDb(self, event):
-        self._messageBox.text = "Not connected to db"
-        dbString=self._dbStringButton.getText()
-        self._projectName = self._projectButton.getText()
-        if self._projectName == "":
-            self._messageBox.text = "Not connected to db: please set a project name"
-            return
-        self._conn = zxJDBC.connect("jdbc:"+dbString, None, None, "com.mysql.jdbc.Driver")
-        self._connected=True
-        self._cursor = self._conn.cursor()
-        self._cursor.execute("CREATE TABLE IF NOT EXISTS request (id int not null auto_increment, projectName varchar(255) not null, path varchar(255), color varchar(10),comment varchar(255),primary key(id), CONSTRAINT unique_key UNIQUE(path,projectName));")
-        self._messageBox.text="Connected to db"
 
 
     def registerExtenderCallbacks(self,callbacks):
@@ -56,8 +102,9 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
         return
 
     def extensionUnloaded(self): # Will close the db connection when extension is unloaded
-        self._cursor.close()
-        self._conn.close()
+        self._messageBox.text = "Not Connected"
+        if self._websocket:
+            self._websocket.sendClose(1000, "Just closin")
 
 
     def createMenuItems(self, invocation):
@@ -67,33 +114,18 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
             return None
         for i in invocation.getSelectedMessages(): ## hacky hacky workaround... need to right click after all are highlighted
             color = i.getHighlight()
-            if color and self._connected:
-                if not self._cursor:
-                    self._cursor = self._conn.cursor()
+            if color:
                 comment=i.getComment()
-                query = "INSERT into request (projectName, path, color) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE projectName=(?), path=(?), color=(?);"
                 path=i.getUrl().toString().split("?")[0]
-                self._cursor.executemany(query, [self._projectName, path, color,self._projectName,path,color])
-                if comment != "":
-                    query = "INSERT INTO request (projectName, path, comment) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE projectName=(?), path=(?), comment=(?);"
-                    self._cursor.executemany(query, [self._projectName, path, comment, self._projectName, path, comment])
-                self._requestIds.append(self._cursor.lastrowid)
-        if self._connected:
-            self._conn.commit()
-            self.updateReqs()
+                data = {"user":self._user, "path":path, "color":color, "comment":comment, "project":self._projectName}
+                self.sendMessage(json.dumps(data))
         return None
 
-    def updateReqs(self):
-        query = "select path, color, comment from request where projectName = (?);"
-        self._cursor.executemany(query, [self._projectName])
-        requests=self._cursor.fetchall()
+    def updateReq(self, path, color, comment):
         reqs = self._callbacks.getSiteMap("")
         for i in reqs:
             url = i.getUrl().toString().split("?")[0]
-            for j in requests:
-                url2 = j[0]
-                if url == url2:
-                    i.setHighlight(j[1])
-                    i.setComment(j[2])
-
-
+            if path == url:
+                i.setHighlight(color)
+                if comment != "":
+                    i.setComment(comment)
