@@ -1,18 +1,27 @@
 # Burp-Highlight-Sharing-Server
 
-## About
+## What is this
 
-This is the server for the Highlight-Sharing burp extension, this runs with docker-compose, one docker image for the web server written in go, and one image for the database.
+
+This is a server for the Highlight-Sharing burp extension, written in go.
+
+
+## Interesting information
 
 Uses port 8000 by default
 
 communicates over websockets
 
-Stores the requests with highlights, comments etc.
+Stores the requests with highlights, comments etc. in a mysql db
 
 Relays highlights to other connected users on the same project
+
+Does not support SSL yet
+
+Might want to consider changing the passwords before use, to change this you need to change multiple files, grep for Secret, and you'll find it
 
 ### How to run
 
 docker-compose up db // wait for this command to finish
+
 docker-compose up app // enjoy
