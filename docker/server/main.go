@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"log"
@@ -79,7 +81,9 @@ func highlightSharing(w http.ResponseWriter, r *http.Request) {
 			}
 			results.Close()
 		} else {
-			insert, err := db.Query("INSERT into request (user, projectName, path, color, comment) VALUES (?,?, ?, ?, ?) ON DUPLICATE KEY UPDATE user=(?), projectName=(?), path=(?), color=(?), comment=(?);", msg.User, msg.Project, msg.Path, msg.Color, msg.Comment, msg.User, msg.Project, msg.Path, msg.Color, msg.Comment)
+			hash := md5.Sum([]byte(msg.Path))
+			md5sum := hex.EncodeToString(hash[:])
+			insert, err := db.Query("INSERT into request (user, projectName, path, color, comment, md5sum) VALUES (?,?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE user=(?), projectName=(?), path=(?), color=(?), comment=(?), md5sum=(?);", msg.User, msg.Project, msg.Path, msg.Color, msg.Comment, md5sum, msg.User, msg.Project, msg.Path, msg.Color, msg.Comment, md5sum)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -109,7 +113,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	create, err := db.Query("CREATE TABLE IF NOT EXISTS request (id int not null auto_increment, projectName varchar(255) not null, path varchar(2550) not null, color varchar(10) not null,comment varchar(255) not null,user varchar(255) not null,primary key(id), CONSTRAINT unique_key UNIQUE(path,projectName));")
+	create, err := db.Query("CREATE TABLE IF NOT EXISTS request (id int not null auto_increment, projectName varchar(50) not null, path varchar(2048) not null, md5sum varchar(32) not null, color varchar(10) not null,comment varchar(255) not null,user varchar(20) not null, primary key(id), CONSTRAINT unique_key UNIQUE(md5sum, projectName));")
 	if err != nil {
 		log.Fatal(err)
 	}
