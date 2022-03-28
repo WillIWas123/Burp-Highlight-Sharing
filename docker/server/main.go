@@ -93,6 +93,7 @@ func highlightSharing(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println("Error in position 4")
 				log.Println(err)
+				continue
 			}
 			insert.Close()
 			for i := 0; i < len(clients); i++ {
