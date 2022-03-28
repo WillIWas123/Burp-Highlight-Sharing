@@ -9,7 +9,12 @@ from java.net import URI;
 import java.lang.CharSequence
 import json
 
+
 class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpExtenderCallbacks,IExtensionStateListener, WebSocket.Listener):
+
+    def __init__(self):
+        self.debugging=False
+        self.version="v1.0"
 
     ##### WEBSOCKET PART ######
 
@@ -17,42 +22,63 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
         self._websocket=websocket
         data={"action":"UPDATE", "user":self._user, "project":self._projectName}
         if not self.sendMessage(json.dumps(data)):
-            self._messageBox.text="Not connected: Failed to connect to the websocket server"
+            self.writeText("Not connected: Failed to connect to the websocket server")
         self._websocket.request(1)
-        self._messageBox.text="Connected :)"
+        self.writeText("Connected")
+        self._callbacks.printOutput("Connected to Burp-Highlight-Sharing "+ self.version)
 
     def onClose(self, websocket, statusCode, reason):
-        self._messageBox.text="Not connected: connection closed :("
+        self.writeText("Not connected: connection closed")
 
     def onText(self, websocket, data, last):
+        if self.debugging:
+            self._callbacks.printOutput("Received message")
         self._websocket=websocket
         content = json.loads(data.toString())
         user = content["user"]
         project = content["project"]
         if user != self._user and project == self._projectName:
+            if self.debugging:
+                self._callbacks.printOutput("Updating path "+content["path"])
             self.updateReq(content["path"], content["color"], content["comment"])
-        else:
-            self._callbacks.printOutput("NOT UPDATING")
+        elif self.debugging:
+            self._callbacks.printOutput("NOT UPDATING "+content["path"])
         self._websocket.request(1)
 
     def sendMessage(self, text):
+        if self.debugging:
+            self._callbacks.printOutput("Sending message")
         if self._websocket:
             self._websocket.sendText(text, True)
             self._websocket.request(1)
+            if self.debugging:
+                self._callbacks.printOutput("Message sent")
             return True
         return False # is probably not initialized, due to some async thingy......
 
 
     def connectWebsocket(self, event):
-        self._messageBox.text = "Not connected"
+        self.writeText("Not connected")
         self._wsString = self._wsStringButton.getText()
         self._projectName = self._projectButton.getText()
         self._user = self._userButton.getText()
         if self._projectName =="" or self._user == "":
-            self._messageBox.text = "Not connected: Please specify a username and ws string"
+            self.writeText("Not connected: Please specify a username and ws string")
             return
         client = HttpClient.newHttpClient()
         client.newWebSocketBuilder().buildAsync(URI.create(self._wsString),  self);
+
+    def toggleDebug(self, event):
+        self.debugging = not self.debugging
+        if self.debugging:
+            self._messageBox.text+=" and debugging enabled"
+
+    def writeText(self, connection):
+        if self.debugging:
+            self._messageBox.text=connection+" and debugging enabled"
+        else:
+            self._messageBox.text=connection
+
 
 
     ##### WEBSOCKET PART ######
@@ -84,6 +110,11 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
 
         self._messageBox = JLabel("")
         panel.add(self._messageBox)
+
+
+        debug = JButton("Debug", actionPerformed=self.toggleDebug)
+        panel.add(debug)
+
         return panel
     ###### UI ######
 
@@ -102,7 +133,7 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
         return
 
     def extensionUnloaded(self): # Will close the db connection when extension is unloaded
-        self._messageBox.text = "Not Connected"
+        self.writeText("Not Connected")
         if self._websocket:
             self._websocket.sendClose(1000, "Just closin")
 
@@ -122,10 +153,18 @@ class BurpExtender(IBurpExtender,IContextMenuFactory,ITab, IRequestInfo, IBurpEx
         return None
 
     def updateReq(self, path, color, comment):
+        if self.debugging:
+            self._callbacks.printOutput("Updating requests")
         reqs = self._callbacks.getSiteMap("")
         for i in reqs:
             url = i.getUrl().toString().split("?")[0]
             if path == url:
                 i.setHighlight(color)
+                if self.debugging:
+                    self._callbacks.printOutput("Setting color of " + path)
                 if comment != "":
+                    if self.debugging:
+                        self._callbacks.printOutput("Setting comment of "+path)
                     i.setComment(comment)
+        if self.debugging:
+            self._callbacks.printOutput("Updating requests done")

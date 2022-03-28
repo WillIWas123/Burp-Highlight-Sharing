@@ -1,13 +1,13 @@
 package main
 
 import (
-	"crypto/md5"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
+	"crypto/md5"
+	"encoding/hex"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
@@ -64,18 +64,24 @@ func highlightSharing(w http.ResponseWriter, r *http.Request) {
 			clients = append(clients, client)
 			results, err := db.Query("SELECT path, color, comment, user from request where projectName = (?) AND user != (?)", msg.Project, msg.User)
 			if err != nil {
-				log.Fatal(err)
+				log.Println("Error in position 1")
+				log.Println(err)
+				continue
 			}
 			for results.Next() {
 				var message wsmessage
 				err = results.Scan(&message.Path, &message.Color, &message.Comment, &message.User)
 				if err != nil {
-					log.Fatal(err)
+					log.Println("Error in position 2")
+					log.Println(err)
+					continue
 				}
 				message.Project = msg.Project
 				content, err := json.Marshal(message)
 				if err != nil {
-					log.Fatal(err)
+					log.Println("Error in position 3")
+					log.Println(err)
+					continue
 				}
 				client.con.WriteMessage(mt, content)
 			}
@@ -85,7 +91,8 @@ func highlightSharing(w http.ResponseWriter, r *http.Request) {
 			md5sum := hex.EncodeToString(hash[:])
 			insert, err := db.Query("INSERT into request (user, projectName, path, color, comment, md5sum) VALUES (?,?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE user=(?), projectName=(?), path=(?), color=(?), comment=(?), md5sum=(?);", msg.User, msg.Project, msg.Path, msg.Color, msg.Comment, md5sum, msg.User, msg.Project, msg.Path, msg.Color, msg.Comment, md5sum)
 			if err != nil {
-				log.Fatal(err)
+				log.Println("Error in position 4")
+				log.Println(err)
 			}
 			insert.Close()
 			for i := 0; i < len(clients); i++ {
@@ -113,7 +120,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	create, err := db.Query("CREATE TABLE IF NOT EXISTS request (id int not null auto_increment, projectName varchar(50) not null, path varchar(2048) not null, md5sum varchar(32) not null, color varchar(10) not null,comment varchar(255) not null,user varchar(20) not null, primary key(id), CONSTRAINT unique_key UNIQUE(md5sum, projectName));")
+	create, err := db.Query("CREATE TABLE IF NOT EXISTS request (id int not null auto_increment, projectName varchar(50) not null, path varchar(2048) not null, md5sum varchar(32) not null, color varchar(10) not null,comment varchar(255) not null,user varchar(20) not null,primary key(id), CONSTRAINT unique_key UNIQUE(md5sum,projectName));")
 	if err != nil {
 		log.Fatal(err)
 	}
